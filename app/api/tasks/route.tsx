@@ -1,73 +1,87 @@
 import { NextResponse } from "next/server";
-import { connectToDB } from "@/lib/mongoose";
-import Task from "@/models/Task";
+import { connectToDB } from "@/lib/mongodb";
+import mongoose from "mongoose";
 
-export async function GET(req: Request) {
+// Explicitly export the HTTP methods we support
+export const GET = async (request: Request) => {
   try {
     await connectToDB();
-    const url = new URL(req.url);
-    const userId = url.searchParams.get("userId");
+    
+    // Get userId from searchParams
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
 
     if (!userId) {
-      return new NextResponse("User ID is required", { status: 400 });
+      return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    const tasks = await Task.find({ assignedTo: userId }); // ✅ Fetch tasks for user
+    const tasks = await mongoose.connection
+      .collection("tasks")
+      .find({ userId })
+      .toArray();
+
     return NextResponse.json(tasks);
   } catch (error) {
     console.error("Error fetching tasks:", error);
-    return new NextResponse("Error fetching tasks", { status: 500 });
+    return NextResponse.json({ error: "Error fetching tasks" }, { status: 500 });
   }
-}
+};
 
-export async function POST(req: Request) {
+export const POST = async (request: Request) => {
   try {
     await connectToDB();
-    const body = await req.json();
-    console.log("Incoming Task Data:", body); // ✅ Debug incoming request
-    
-    if (!body.title || !body.assignedTo || !body.status) {
-      return new NextResponse("Missing required fields", { status: 400 });
+    const body = await request.json();
+    const { userId, title, description, status } = body;
+
+    if (!userId || !title || !status) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const newTask = new Task({
-      title: body.title,
-      description: body.description || "",
-      assignedTo: body.assignedTo, // ✅ Ensure assignedTo is included
-      status: body.status || "Backlog",
-    });
+    const newTask = {
+      userId,
+      title,
+      description: description || "",
+      status,
+      createdAt: new Date(),
+    };
 
-    await newTask.save();
-    return NextResponse.json(newTask);
+    const result = await mongoose.connection
+      .collection("tasks")
+      .insertOne(newTask);
+
+    return NextResponse.json({ ...newTask, _id: result.insertedId });
   } catch (error) {
     console.error("Error creating task:", error);
-    return new NextResponse("Error creating task", { status: 500 });
+    return NextResponse.json({ error: "Error creating task" }, { status: 500 });
   }
-}
+};
 
-export async function PUT(req: Request) {
+export const PUT = async (request: Request) => {
   try {
     await connectToDB();
-    const { taskId, newStatus } = await req.json();
+    const { tasks } = await request.json();
 
-    if (!taskId || !newStatus) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    if (!tasks || !Array.isArray(tasks)) {
+      return NextResponse.json({ error: "Invalid tasks data" }, { status: 400 });
     }
 
-    // ✅ Update task status in MongoDB
-    const updatedTask = await Task.findByIdAndUpdate(
-      taskId,
-      { status: newStatus },
-      { new: true }
-    );
+    const bulkOps = tasks.map(task => ({
+      updateOne: {
+        filter: { _id: new mongoose.Types.ObjectId(task._id) },
+        update: { $set: { status: task.status } }
+      }
+    }));
 
-    if (!updatedTask) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
+    const result = await mongoose.connection
+      .collection("tasks")
+      .bulkWrite(bulkOps);
 
-    return NextResponse.json(updatedTask); // Send back updated task
+    return NextResponse.json({ 
+      message: "Tasks updated successfully",
+      modifiedCount: result.modifiedCount 
+    });
   } catch (error) {
-    console.error("Error updating task:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error("Error updating tasks:", error);
+    return NextResponse.json({ error: "Error updating tasks" }, { status: 500 });
   }
-}
+};
