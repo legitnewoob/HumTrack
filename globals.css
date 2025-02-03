@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animated-bg {
+  background: linear-gradient(-45deg, #1e1e2e, #2a2a3b, #3b3b56, #202027);
+  background-size: 300% 300%;
+  animation: gradientMove 10s ease infinite;
+}
+/* Apply a global black-based gradient background to the entire app */
+body {
+  @apply bg-gradient-to-br from-gray-900 via-gray-800 to-black text-gray-100 min-h-screen;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Ensure the app container is responsive */
+html {
+  @apply h-full;
+}
+
+#root, #__next {
+  @apply h-full;
+}
+
